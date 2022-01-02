@@ -43,10 +43,10 @@ var formatAge = function(age) {
     dec = dec.sub(msInSecond.mul(seconds))
 
     let r = ""
-    if (years.gte(0)) r += `${formatWhole(years)} years `
-    if (days.gte(0)) r += `${formatWhole(days)} days `
-    if (hours.gte(0)) r += `${formatWhole(hours)} hours `
-    if (minutes.gte(0)) r += `${formatWhole(minutes)} minutes `
-    if (seconds.gte(0)) r += `${formatWhole(years)} seconds`
-    return r
+    if (years.gt(0)) r += `${formatWhole(years)} years `
+    if (days.gt(0)) r += `${formatWhole(days)} days `
+    if (hours.gt(0)) r += `${formatWhole(hours)} hours `
+    if (minutes.gt(0)) r += `${formatWhole(minutes)} minutes `
+    if (seconds.gt(0)) r += `${formatWhole(years)} seconds`
+    return r === '' ? "0 seconds" : r 
 }
