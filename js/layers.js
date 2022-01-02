@@ -1,4 +1,4 @@
-import { default as Decimal } from "../node_modules/break_eternity.js/dist/index"
+import { default as Decimal } from "../node_modules/break_eternity.js"
 
 addLayer("main", {
     startData() {
