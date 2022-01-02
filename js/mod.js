@@ -1,3 +1,5 @@
+import { default as Decimal } from "../node_modules/break_eternity.js"
+
 let modInfo = {
 	name: "Time Collector",
 	id: "adsaf-timeCollector",

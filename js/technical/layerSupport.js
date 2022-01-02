@@ -1,3 +1,5 @@
+import { default as Decimal } from "../../node_modules/break_eternity.js"
+
 var layers = {}
 
 const decimalZero = new Decimal(0)
