@@ -1,0 +1,1 @@
+import { default as Decimal } from "../node_modules/break_eternity.js"
