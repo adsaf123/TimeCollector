@@ -1,6 +1,6 @@
 var layoutInfo = {
-    startTab: "main",
-    startNavTab: "none",
+    startTab: "none",
+    startNavTab: "main",
 	showTree: true,
 
     treeLayout: ""
