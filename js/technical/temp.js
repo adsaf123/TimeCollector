@@ -135,6 +135,7 @@ function updateTempData(layerData, tmpData, funcsData, useThis) {
 
 			if (useThis !== undefined) value = layerData[item].bind(useThis)()
 			else value = layerData[item]()
+			// console.log(tmpData, item, value) // <- uncomment in case of errors (debugging)
 			Vue.set(tmpData, item, value)
 		}
 	}	
