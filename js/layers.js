@@ -794,6 +794,7 @@ addLayer("storage", {
                         upgradeTier: 0,
                         amplified: false
                     })
+                    break
                 case "amplifying":
                     data.amplified = !data.amplified
                     if (data.amplified) {
@@ -833,6 +834,7 @@ addLayer("storage", {
                         player.upgrades.selectedUpgrade = -1
                         player.upgrades.fromWhat = ""
                     }
+                    break
             }
         },
 
