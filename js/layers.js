@@ -726,6 +726,7 @@ addLayer("upgrades", {
                         player.upgrades.selectedUpgrade = -1
                         player.upgrades.fromWhat = ""
                     }
+                    break
             }
         },
 
