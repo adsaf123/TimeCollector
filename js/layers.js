@@ -294,7 +294,7 @@ addLayer("research", {
     ],
 
     penalty() {
-        return new Decimal(new Decimal(1.5).mul(new Decimal(0.9).pow(player.death.effects.mem))).pow(player.research.numOfResearched)
+        return new Decimal(new Decimal(0.5).mul(new Decimal(0.9).pow(player.death.effects.mem))).add(1).pow(player.research.numOfResearched)
     },
 
     buyables: {
@@ -451,7 +451,7 @@ addLayer("research", {
         if (player.research.researching != "") {
             if (player.research.speedingUp && player.main.condensedTime.gte(tmp.research.researchSpeedUpCost.mul(diff))) {
                 player.main.condensedTime = player.main.condensedTime.sub(tmp.research.researchSpeedUpCost.mul(diff))
-                player.research.storedRP = player.research.storedRP.add(tmp.research.researchBase.mul(tmp.research.researchSpeedUp).mul(diff))
+                player.research.storedRP = player.research.storedRP.add(tmp.research.researchBase.mul(tmp.research.researchSpeedUp).mul(diff).mul(new Decimal(1.3).pow(player.death.effects.brl)))
             } else {
                 player.research.storedRP = player.research.storedRP.add(tmp.research.researchBase.mul(diff).mul(new Decimal(1.3).pow(player.death.effects.brl)))
             }
@@ -1167,5 +1167,4 @@ addLayer("death", {
             }
         }
     }
-
 })
