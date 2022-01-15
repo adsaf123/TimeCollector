@@ -51,14 +51,14 @@ var cards = {
     }
 }
 
-var generateCards = function() {
+var generateCards = function () {
     let list = []
     let num = 3
     if (getBuyableAmount("research", "genm")?.gte(1)) num += 3
     if (getBuyableAmount("research", "agenm")?.gte(1)) num += 3
     for (let i = 0; i < num; i++) {
         let keys = Object.keys(cards)
-        list.push({...cards[keys[keys.length * Math.random() << 0]]})
+        list.push({ ...cards[keys[keys.length * Math.random() << 0]] })
     }
     player.death.shownCards = list
 }
@@ -183,7 +183,12 @@ addLayer("money", {
         return {
             unlocked: true,
             points: new Decimal(0),
-            money: new Decimal(0)
+            money: new Decimal(0),
+            stockUnlocked: false,
+            stockAmount: new Decimal(0),
+            stockPrice: new Decimal(10),
+            stockAmp: new Decimal(1),
+            stockAmpTime: new Decimal(0),
         }
     },
 
@@ -198,7 +203,25 @@ addLayer("money", {
         "blank",
         ["clickable", "sellTime"],
         "blank",
-        ["buyable", "researchTable"]
+        ["buyable", "researchTable"],
+        "blank",
+        function () {
+            if (!getBuyableAmount("research", "mem1").gte(1)) return "blank"
+            return ["column", [
+                ["display-text", "STOCKS"],
+                'blank',
+                ["display-text", `Current stock price: ${format(player.money.stockPrice)}`],
+                "blank",
+                ["display-text", `You have ${format(player.money.stockAmount)} stocks`],
+                "blank",
+                ["row", [
+                    ["clickable", "buy"],
+                    ["clickable", "sell"],
+                    ["clickable", "amp"],
+                ]]
+            ]]
+        }
+
     ],
 
     clickables: {
@@ -209,7 +232,39 @@ addLayer("money", {
                 player.main.condensedTime = player.main.condensedTime.sub(1)
                 player.money.money = player.money.money.add(new Decimal(1).mul(new Decimal(1.5).pow(player.death.effects.chr)))
             }
-        }
+        },
+
+        "amp": {
+            display() { return "Spend 10% of your condensed time to <s>bribe</s> use creative accounting to increase instability of market" },
+            canClick() { return true },
+            onClick() {
+                let tenp = player.main.condensedTime.mul(0.1)
+                player.main.condensedTime = player.main.condensedTime.sub(tenp)
+                player.money.stockAmp = new Decimal(tenp).log10().div(player.money.stockAmp).add(player.money.stockAmp)
+                player.money.stockAmpTime = player.money.stockAmpTime.add(tenp.sqrt())
+            },
+            unlocked() { return getBuyableAmount("research", "mem2").gte(1) }
+        },
+
+        "buy": {
+            display() { return "Spend 25% of your money to buy stocks" },
+            canClick() { return true },
+            onClick() {
+                let tfp = player.money.money.mul(0.25)
+                player.money.money = player.money.money.sub(tfp)
+                player.money.stockAmount = player.money.stockAmount.add(tfp.div(player.money.stockPrice))
+            }
+        },
+
+        "sell": {
+            display() { return "Sell 25% of your stocks" },
+            canClick() { return true },
+            onClick() {
+                let tfp = player.money.stockAmount.mul(0.25)
+                player.money.stockAmount = player.money.stockAmount.sub(tfp)
+                player.money.money = player.money.money.add(tfp.mul(player.money.stockPrice))
+            }
+        },
     },
 
     buyables: {
@@ -239,6 +294,17 @@ addLayer("money", {
             }
         }
     },
+
+    update(diff) {
+        player.money.stockPrice = new Decimal(20).times(new Decimal(player.timePlayed / 6).sin().times(player.money.stockAmp)).add(40).max(1)
+
+        if (player.money.stockAmpTime.lte(0)) {
+            player.money.stockAmp = new Decimal(1),
+                player.money.stockAmpTime = new Decimal(0)
+        } else {
+            player.money.stockAmpTime = player.money.stockAmpTime.sub(diff)
+        }
+    }
 })
 
 addLayer("research", {
@@ -278,19 +344,19 @@ addLayer("research", {
         "blank",
         ["buyable", "tde"],
         "blank",
-        // ["row", [
-        //     ["buyable", "tc1"],
-        //     "blank",
-        //     ["buyable", "mem1"],
-        // ]],
-        // "blank",
-        // ["row", [
-        //     ["buyable", "tc2"],
-        //     "blank",
-        //     ["buyable", "mem2"]
-        // ]],
-        // "blank",
-        // ["buyable", "tde2"]
+        ["row", [
+            ["buyable", "genm"],
+            ["blank", ["50px", "1px"]],
+            ["buyable", "mem1"],
+        ]],
+        "blank",
+        ["row", [
+            ["buyable", "agenm"],
+            ["blank", ["50px", "1px"]],
+            ["buyable", "mem2"]
+        ]],
+        "blank",
+        ["buyable", "tde2"]
     ],
 
     penalty() {
@@ -391,6 +457,70 @@ addLayer("research", {
             },
             purchaseLimit: new Decimal(1),
             unlocked() { return getBuyableAmount(this.layer, "amp").gte(1) },
+            branches: ["mem1", "genm"],
+        },
+
+        "mem1": {
+            title: "Memory manipulation",
+            display() { return `Allows you to buy stocks<br><br><h2>Cost:</h2> ${format(tmp[this.layer].buyables[this.id].cost)}RP` },
+            cost() { return new Decimal(1500).mul(tmp.research.penalty) },
+            canAfford() { return getBuyableAmount(this.layer, "tde").gte(1) },
+            buy() {
+                if (player.research.researching === this.id)
+                    return
+                player.research.researching = this.id
+                player.research.storedRP = new Decimal(0)
+            },
+            purchaseLimit: new Decimal(1),
+            unlocked() { return getBuyableAmount(this.layer, "tde").gte(1) },
+            branches: ["mem2"],
+        },
+
+        "mem2": {
+            title: "Advanced Memory manipulation",
+            display() { return `Allows you to manipulate market<br><br><h2>Cost:</h2> ${format(tmp[this.layer].buyables[this.id].cost)}RP` },
+            cost() { return new Decimal(2500).mul(tmp.research.penalty) },
+            canAfford() { return getBuyableAmount(this.layer, "mem1").gte(1) },
+            buy() {
+                if (player.research.researching === this.id)
+                    return
+                player.research.researching = this.id
+                player.research.storedRP = new Decimal(0)
+            },
+            purchaseLimit: new Decimal(1),
+            unlocked() { return getBuyableAmount(this.layer, "tde").gte(1) },
+            branches: [],
+        },
+
+        "genm": {
+            title: "Genome manipulation",
+            display() { return `Increases number of selectable traits on death by 3<br><br><h2>Cost:</h2> ${format(tmp[this.layer].buyables[this.id].cost)}RP` },
+            cost() { return new Decimal(1500).mul(tmp.research.penalty) },
+            canAfford() { return getBuyableAmount(this.layer, "tde").gte(1) },
+            buy() {
+                if (player.research.researching === this.id)
+                    return
+                player.research.researching = this.id
+                player.research.storedRP = new Decimal(0)
+            },
+            purchaseLimit: new Decimal(1),
+            unlocked() { return getBuyableAmount(this.layer, "tde").gte(1) },
+            branches: ["agenm"],
+        },
+
+        "agenm": {
+            title: "Advanced genome manipulation",
+            display() { return `Increases number of selectable traits on death by 3<br><br><h2>Cost:</h2> ${format(tmp[this.layer].buyables[this.id].cost)}RP` },
+            cost() { return new Decimal(2500).mul(tmp.research.penalty) },
+            canAfford() { return getBuyableAmount(this.layer, "genm").gte(1) },
+            buy() {
+                if (player.research.researching === this.id)
+                    return
+                player.research.researching = this.id
+                player.research.storedRP = new Decimal(0)
+            },
+            purchaseLimit: new Decimal(1),
+            unlocked() { return getBuyableAmount(this.layer, "tde").gte(1) },
             branches: [],
         }
     },
@@ -504,7 +634,7 @@ addLayer("upgrades", {
             ["clickable", "eff"]
         ]],
         "blank",
-        ["display-text", function() {return `Speed mult: ${format(tmp.upgrades.allMults.speed)}, gain mult: ${format(tmp.upgrades.allMults.mult)}, efficiency mult: ${format(tmp.upgrades.allMults.efficiency)}`}],
+        ["display-text", function () { return `Speed mult: ${format(tmp.upgrades.allMults.speed)}, gain mult: ${format(tmp.upgrades.allMults.mult)}, efficiency mult: ${format(tmp.upgrades.allMults.efficiency)}` }],
         "blank",
         ["display-text", "This is storage, it is default buy destination. You can merge upgrades inside storage, but their effects don't apply"],
         "blank",
@@ -521,8 +651,8 @@ addLayer("upgrades", {
                 let data = getGridData("upgrades", x * 100 + y)
                 if (data !== undefined) {
                     if (data.upgradeID == "spd") {
-                        spdMult = spdMult.mul(new Decimal(.05).mul((new Decimal(3).pow(data.upgradeTier-1).mul(data.amplified ? 2 : 1))).add(1))
-                        effMult = effMult.mul(new Decimal(.10).mul((new Decimal(3).pow(data.upgradeTier-1).mul(data.amplified ? 2 : 1))).add(1))
+                        spdMult = spdMult.mul(new Decimal(.05).mul((new Decimal(3).pow(data.upgradeTier - 1).mul(data.amplified ? 2 : 1))).add(1))
+                        effMult = effMult.mul(new Decimal(.10).mul((new Decimal(3).pow(data.upgradeTier - 1).mul(data.amplified ? 2 : 1))).add(1))
                     }
                 }
             }
@@ -543,8 +673,8 @@ addLayer("upgrades", {
                 let data = getGridData("upgrades", x * 100 + y)
                 if (data !== undefined) {
                     if (data.upgradeID == "mult") {
-                        spdMult = spdMult.mul(new Decimal(1).sub(new Decimal(0.1).mul((new Decimal(3).pow(data.upgradeTier-1).mul(data.amplified ? 2 : 1)))))
-                        gainMult = gainMult.mul(new Decimal(.05).mul((new Decimal(3).pow(data.upgradeTier-1).mul(data.amplified ? 2 : 1))).add(1))
+                        spdMult = spdMult.mul(new Decimal(1).sub(new Decimal(0.1).mul((new Decimal(3).pow(data.upgradeTier - 1).mul(data.amplified ? 2 : 1)))))
+                        gainMult = gainMult.mul(new Decimal(.05).mul((new Decimal(3).pow(data.upgradeTier - 1).mul(data.amplified ? 2 : 1))).add(1))
                     }
                 }
             }
@@ -565,8 +695,8 @@ addLayer("upgrades", {
                 let data = getGridData("upgrades", x * 100 + y)
                 if (data !== undefined) {
                     if (data.upgradeID == "eff") {
-                        effMult = effMult.mul(new Decimal(1).sub(new Decimal(0.1).mul((new Decimal(3).pow(data.upgradeTier-1).mul(data.amplified ? 2 : 1)))))
-                        gainMult = gainMult.mul(new Decimal(1).sub(new Decimal(0.05).mul((new Decimal(3).pow(data.upgradeTier-1).mul(data.amplified ? 2 : 1)))))
+                        effMult = effMult.mul(new Decimal(1).sub(new Decimal(0.1).mul((new Decimal(3).pow(data.upgradeTier - 1).mul(data.amplified ? 2 : 1)))))
+                        gainMult = gainMult.mul(new Decimal(1).sub(new Decimal(0.05).mul((new Decimal(3).pow(data.upgradeTier - 1).mul(data.amplified ? 2 : 1)))))
                     }
                 }
             }
@@ -590,13 +720,13 @@ addLayer("upgrades", {
         "mode": {
             display() { return `MODE: ${player.upgrades.mode}` },
             canClick() { return true },
-            onClick() { 
+            onClick() {
                 switch (player.upgrades.mode) {
                     case "destroying":
                         if (getBuyableAmount("research", "addamp").gte(1))
                             player.upgrades.mode = "amplifying"
                         else
-                        player.upgrades.mode = "swapping"
+                            player.upgrades.mode = "swapping"
                         break
                     case "amplifying":
                         player.upgrades.mode = "swapping"
@@ -616,7 +746,7 @@ addLayer("upgrades", {
             canClick() { return player.money.money.gte(5) && player.main.condensedTime.gte(2) && getBuyableAmount("research", "spd").gte(1) },
             onClick() {
                 player.money.money = player.money.money.sub(5)
-                player.main.condensedTime = player.main.condensedTime.sub(2)   
+                player.main.condensedTime = player.main.condensedTime.sub(2)
                 addUpgrade("spd")
             },
             style: { "background-color": "#FF0000" }
@@ -627,7 +757,7 @@ addLayer("upgrades", {
             canClick() { return player.money.money.gte(5) && player.main.condensedTime.gte(2) && getBuyableAmount("research", "mult").gte(1) },
             onClick() {
                 player.money.money = player.money.money.sub(5)
-                player.main.condensedTime = player.main.condensedTime.sub(2)   
+                player.main.condensedTime = player.main.condensedTime.sub(2)
                 addUpgrade("mult")
             },
             style: { "background-color": "#0000FF" }
@@ -638,7 +768,7 @@ addLayer("upgrades", {
             canClick() { return player.money.money.gte(5) && player.main.condensedTime.gte(2) && getBuyableAmount("research", "eff").gte(1) },
             onClick() {
                 player.money.money = player.money.money.sub(5)
-                player.main.condensedTime = player.main.condensedTime.sub(2)   
+                player.main.condensedTime = player.main.condensedTime.sub(2)
                 addUpgrade("eff")
             },
             style: { "background-color": "#00FF00" }
@@ -681,6 +811,7 @@ addLayer("upgrades", {
         onClick(data, id) {
             switch (player.upgrades.mode) {
                 case "destroying":
+                    if (data.amplified) player.upgrades.amplifiedNum = player.upgrades.amplifiedNum.add(data.upgradeTier)
                     setGridData("upgrades", id, {
                         upgradeID: "",
                         upgradeTier: 0,
@@ -700,7 +831,7 @@ addLayer("upgrades", {
                         player.upgrades.selectedUpgrade = id
                         player.upgrades.fromWhat = "upgrades"
                     } else {
-                        tmpData = {...data}
+                        tmpData = { ...data }
                         setGridData("upgrades", id, getGridData(player.upgrades.fromWhat, player.upgrades.selectedUpgrade))
                         setGridData(player.upgrades.fromWhat, player.upgrades.selectedUpgrade, tmpData)
 
@@ -713,14 +844,16 @@ addLayer("upgrades", {
                         player.upgrades.selectedUpgrade = id
                         player.upgrades.fromWhat = "upgrades"
                     } else if (player.upgrades.selectedUpgrade !== id || player.upgrades.fromWhat !== "upgrades") {
-                        if (data.upgradeID == getGridData(player.upgrades.fromWhat, player.upgrades.selectedUpgrade).upgradeID && 
+                        if (data.upgradeID == getGridData(player.upgrades.fromWhat, player.upgrades.selectedUpgrade).upgradeID &&
                             data.upgradeTier == getGridData(player.upgrades.fromWhat, player.upgrades.selectedUpgrade).upgradeTier) {
-                                data.upgradeTier++
-                                setGridData(player.upgrades.fromWhat, player.upgrades.selectedUpgrade, {
-                                    upgradeID: "",
-                                    upgradeTier: 0,
-                                    amplified: false
-                                })
+                            data.upgradeTier++
+                            if (data.amplified) player.upgrades.amplifiedNum = player.upgrades.amplifiedNum.add(1)
+                            if (getGridData(player.upgrades.fromWhat, player.upgrades.selectedUpgrade).amplified) player.upgrades.amplifiedNum = player.upgrades.amplifiedNum.sub(getGridData(player.upgrades.fromWhat, player.upgrades.selectedUpgrade).upgradeTier)
+                            setGridData(player.upgrades.fromWhat, player.upgrades.selectedUpgrade, {
+                                upgradeID: "",
+                                upgradeTier: 0,
+                                amplified: false
+                            })
                         }
 
                         player.upgrades.selectedUpgrade = -1
@@ -731,7 +864,7 @@ addLayer("upgrades", {
         },
 
         getDisplay(data, id) {
-            return (data.amplified ? "A" : "") + (data.upgradeID[0]?.toUpperCase() == undefined ? "" : (data.upgradeID[0]?.toUpperCase() + data.upgradeTier.toString())) 
+            return (data.amplified ? "A" : "") + (data.upgradeID[0]?.toUpperCase() == undefined ? "" : (data.upgradeID[0]?.toUpperCase() + data.upgradeTier.toString()))
         },
 
         getStyle(data, id) {
@@ -748,7 +881,7 @@ addLayer("upgrades", {
                     "background-color": "#00FF00"
                 }
             }
-        } 
+        }
     },
 
     update(diff) {
@@ -790,6 +923,7 @@ addLayer("storage", {
         onClick(data, id) {
             switch (player.upgrades.mode) {
                 case "destroying":
+                    if (data.amplified) player.upgrades.amplifiedNum = player.upgrades.amplifiedNum.sub(data.upgradeTier)
                     setGridData("storage", id, {
                         upgradeID: "",
                         upgradeTier: 0,
@@ -809,7 +943,7 @@ addLayer("storage", {
                         player.upgrades.selectedUpgrade = id
                         player.upgrades.fromWhat = "storage"
                     } else {
-                        tmpData = {...data}
+                        tmpData = { ...data }
                         setGridData("storage", id, getGridData(player.upgrades.fromWhat, player.upgrades.selectedUpgrade))
                         setGridData(player.upgrades.fromWhat, player.upgrades.selectedUpgrade, tmpData)
 
@@ -822,14 +956,16 @@ addLayer("storage", {
                         player.upgrades.selectedUpgrade = id
                         player.upgrades.fromWhat = "storage"
                     } else if (player.upgrades.selectedUpgrade !== id || player.upgrades.fromWhat !== "storage") {
-                        if (data.upgradeID == getGridData(player.upgrades.fromWhat, player.upgrades.selectedUpgrade).upgradeID && 
+                        if (data.upgradeID == getGridData(player.upgrades.fromWhat, player.upgrades.selectedUpgrade).upgradeID &&
                             data.upgradeTier == getGridData(player.upgrades.fromWhat, player.upgrades.selectedUpgrade).upgradeTier) {
-                                data.upgradeTier++
-                                setGridData(player.upgrades.fromWhat, player.upgrades.selectedUpgrade, {
-                                    upgradeID: "",
-                                    upgradeTier: 0,
-                                    amplified: false
-                                })
+                            data.upgradeTier++
+                            if (data.amplified) player.upgrades.amplifiedNum = player.upgrades.amplifiedNum.add(1)
+                            if (getGridData(player.upgrades.fromWhat, player.upgrades.selectedUpgrade).amplified) player.upgrades.amplifiedNum = player.upgrades.amplifiedNum.sub(getGridData(player.upgrades.fromWhat, player.upgrades.selectedUpgrade).upgradeTier)
+                            setGridData(player.upgrades.fromWhat, player.upgrades.selectedUpgrade, {
+                                upgradeID: "",
+                                upgradeTier: 0,
+                                amplified: false
+                            })
                         }
 
                         player.upgrades.selectedUpgrade = -1
@@ -840,7 +976,7 @@ addLayer("storage", {
         },
 
         getDisplay(data, id) {
-            return (data.amplified ? "A" : "") + (data.upgradeID[0]?.toUpperCase() == undefined ? "" : (data.upgradeID[0]?.toUpperCase() + data.upgradeTier.toString())) 
+            return (data.amplified ? "A" : "") + (data.upgradeID[0]?.toUpperCase() == undefined ? "" : (data.upgradeID[0]?.toUpperCase() + data.upgradeTier.toString()))
         },
 
         getStyle(data, id) {
@@ -857,12 +993,12 @@ addLayer("storage", {
                     "background-color": "#00FF00"
                 }
             }
-        } 
+        }
     }
 })
 
-var addUpgrade = function(type) {
-    for(let x = 1; x < 10; x++) {
+var addUpgrade = function (type) {
+    for (let x = 1; x < 10; x++) {
         for (let y = 1; y < 10; y++) {
             data = getGridData("storage", 100 * x + y)
             if (data !== undefined) {
@@ -906,19 +1042,19 @@ addLayer("death", {
     tabFormat: [
         ["infobox", "death"],
         "blank",
-        ["display-text", function() { return `You have ${format(player.death.genomes)} genomes` }],
+        ["display-text", function () { return `You have ${format(player.death.genomes)} genomes` }],
         "blank",
-        function() {
+        function () {
             let list = ["column", []]
 
             for (const card in player.death.shownCards) {
                 list[1].push(["row", []])
-                list[1][list[1].length-1][1].push(["display-text", player.death.shownCards[card].title])
-                list[1][list[1].length-1][1].push("blank")
-                list[1][list[1].length-1][1].push(["display-text", player.death.shownCards[card].description])
-                list[1][list[1].length-1][1].push("blank")
-                list[1][list[1].length-1][1].push(["clickable", `${card}b`])
-                list[1][list[1].length-1][1].push(["clickable", `${card}s`])
+                list[1][list[1].length - 1][1].push(["display-text", player.death.shownCards[card].title])
+                list[1][list[1].length - 1][1].push("blank")
+                list[1][list[1].length - 1][1].push(["display-text", player.death.shownCards[card].description])
+                list[1][list[1].length - 1][1].push("blank")
+                list[1][list[1].length - 1][1].push(["clickable", `${card}b`])
+                list[1][list[1].length - 1][1].push(["clickable", `${card}s`])
             }
 
             return list
@@ -936,191 +1072,191 @@ addLayer("death", {
 
         "0b": {
             display() { return `buy` },
-            canClick() { return player.death.shownCards[0]?.cost?.lte?.(player.death.genomes)},
+            canClick() { return player.death.shownCards[0]?.cost?.lte?.(player.death.genomes) },
             onClick() {
                 player.death.genomes = player.death.genomes.sub(player.death.shownCards[0]?.cost)
                 player.death.effects[player.death.shownCards[0]?.id] = player.death.effects[player.death.shownCards[0]?.id].add(1)
                 player.death.shownCards = player.death.shownCards.filter((v, i) => i != 0)
             },
-            style: {"width": "100px", "height": "100px", "min-height": "100px"}
+            style: { "width": "100px", "height": "100px", "min-height": "100px" }
         },
 
         "0s": {
             display() { return `sell` },
-            canClick() { return true},
+            canClick() { return true },
             onClick() {
                 player.death.genomes = player.death.genomes.add(player.death.shownCards[0]?.cost.div(2).floor())
                 player.death.shownCards = player.death.shownCards.filter((v, i) => i != 0)
             },
-            style: {"width": "100px", "height": "100px", "min-height": "100px"}
+            style: { "width": "100px", "height": "100px", "min-height": "100px" }
         },
 
         "1b": {
             display() { return `buy` },
-            canClick() { return player.death.shownCards[1]?.cost?.lte?.(player.death.genomes)},
+            canClick() { return player.death.shownCards[1]?.cost?.lte?.(player.death.genomes) },
             onClick() {
                 player.death.genomes = player.death.genomes.sub(player.death.shownCards[1]?.cost)
                 player.death.effects[player.death.shownCards[1]?.id] = player.death.effects[player.death.shownCards[1]?.id].add(1)
                 player.death.shownCards = player.death.shownCards.filter((v, i) => i != 1)
             },
-            style: {"width": "100px", "height": "100px", "min-height": "100px"}
+            style: { "width": "100px", "height": "100px", "min-height": "100px" }
         },
 
         "1s": {
             display() { return `sell` },
-            canClick() { return true},
+            canClick() { return true },
             onClick() {
                 player.death.genomes = player.death.genomes.add(player.death.shownCards[1]?.cost.div(2).floor())
                 player.death.shownCards = player.death.shownCards.filter((v, i) => i != 1)
             },
-            style: {"width": "100px", "height": "100px", "min-height": "100px"}
+            style: { "width": "100px", "height": "100px", "min-height": "100px" }
         },
 
         "2b": {
             display() { return `buy` },
-            canClick() { return player.death.shownCards[2]?.cost?.lte?.(player.death.genomes)},
+            canClick() { return player.death.shownCards[2]?.cost?.lte?.(player.death.genomes) },
             onClick() {
                 player.death.genomes = player.death.genomes.sub(player.death.shownCards[2]?.cost)
                 player.death.effects[player.death.shownCards[2]?.id] = player.death.effects[player.death.shownCards[2]?.id].add(1)
                 player.death.shownCards = player.death.shownCards.filter((v, i) => i != 2)
             },
-            style: {"width": "100px", "height": "100px", "min-height": "100px"}
+            style: { "width": "100px", "height": "100px", "min-height": "100px" }
         },
 
         "2s": {
             display() { return `sell` },
-            canClick() { return true},
+            canClick() { return true },
             onClick() {
                 player.death.genomes = player.death.genomes.add(player.death.shownCards[2]?.cost.div(2).floor())
                 player.death.shownCards = player.death.shownCards.filter((v, i) => i != 2)
             },
-            style: {"width": "100px", "height": "100px", "min-height": "100px"}
+            style: { "width": "100px", "height": "100px", "min-height": "100px" }
         },
 
         "3b": {
             display() { return `buy` },
-            canClick() { return player.death.shownCards[3]?.cost?.lte?.(player.death.genomes)},
+            canClick() { return player.death.shownCards[3]?.cost?.lte?.(player.death.genomes) },
             onClick() {
                 player.death.genomes = player.death.genomes.sub(player.death.shownCards[3]?.cost)
                 player.death.effects[player.death.shownCards[3]?.id] = player.death.effects[player.death.shownCards[3]?.id].add(1)
                 player.death.shownCards = player.death.shownCards.filter((v, i) => i != 3)
             },
-            style: {"width": "100px", "height": "100px", "min-height": "100px"}
+            style: { "width": "100px", "height": "100px", "min-height": "100px" }
         },
 
         "3s": {
             display() { return `sell` },
-            canClick() { return true},
+            canClick() { return true },
             onClick() {
                 player.death.genomes = player.death.genomes.add(player.death.shownCards[3]?.cost.div(2).floor())
                 player.death.shownCards = player.death.shownCards.filter((v, i) => i != 3)
             },
-            style: {"width": "100px", "height": "100px", "min-height": "100px"}
+            style: { "width": "100px", "height": "100px", "min-height": "100px" }
         },
 
         "4b": {
             display() { return `buy` },
-            canClick() { return player.death.shownCards[4]?.cost?.lte?.(player.death.genomes)},
+            canClick() { return player.death.shownCards[4]?.cost?.lte?.(player.death.genomes) },
             onClick() {
                 player.death.genomes = player.death.genomes.sub(player.death.shownCards[4]?.cost)
                 player.death.effects[player.death.shownCards[4]?.id] = player.death.effects[player.death.shownCards[4]?.id].add(1)
                 player.death.shownCards = player.death.shownCards.filter((v, i) => i != 4)
             },
-            style: {"width": "100px", "height": "100px", "min-height": "100px"}
+            style: { "width": "100px", "height": "100px", "min-height": "100px" }
         },
 
         "4s": {
             display() { return `sell` },
-            canClick() { return true},
+            canClick() { return true },
             onClick() {
                 player.death.genomes = player.death.genomes.add(player.death.shownCards[4]?.cost.div(2).floor())
                 player.death.shownCards = player.death.shownCards.filter((v, i) => i != 4)
             },
-            style: {"width": "100px", "height": "100px", "min-height": "100px"}
+            style: { "width": "100px", "height": "100px", "min-height": "100px" }
         },
 
         "5b": {
             display() { return `buy` },
-            canClick() { return player.death.shownCards[5]?.cost?.lte?.(player.death.genomes)},
+            canClick() { return player.death.shownCards[5]?.cost?.lte?.(player.death.genomes) },
             onClick() {
                 player.death.genomes = player.death.genomes.sub(player.death.shownCards[5]?.cost)
                 player.death.effects[player.death.shownCards[5]?.id] = player.death.effects[player.death.shownCards[5]?.id].add(1)
                 player.death.shownCards = player.death.shownCards.filter((v, i) => i != 5)
             },
-            style: {"width": "100px", "height": "100px", "min-height": "100px"}
+            style: { "width": "100px", "height": "100px", "min-height": "100px" }
         },
 
         "5s": {
             display() { return `sell` },
-            canClick() { return true},
+            canClick() { return true },
             onClick() {
                 player.death.genomes = player.death.genomes.add(player.death.shownCards[5]?.cost.div(2).floor())
                 player.death.shownCards = player.death.shownCards.filter((v, i) => i != 5)
             },
-            style: {"width": "100px", "height": "100px", "min-height": "100px"}
+            style: { "width": "100px", "height": "100px", "min-height": "100px" }
         },
 
         "6b": {
             display() { return `buy` },
-            canClick() { return player.death.shownCards[6]?.cost?.lte?.(player.death.genomes)},
+            canClick() { return player.death.shownCards[6]?.cost?.lte?.(player.death.genomes) },
             onClick() {
                 player.death.genomes = player.death.genomes.sub(player.death.shownCards[6]?.cost)
                 player.death.effects[player.death.shownCards[6]?.id] = player.death.effects[player.death.shownCards[6]?.id].add(1)
                 player.death.shownCards = player.death.shownCards.filter((v, i) => i != 6)
             },
-            style: {"width": "100px", "height": "100px", "min-height": "100px"}
+            style: { "width": "100px", "height": "100px", "min-height": "100px" }
         },
 
         "6s": {
             display() { return `sell` },
-            canClick() { return true},
+            canClick() { return true },
             onClick() {
                 player.death.genomes = player.death.genomes.add(player.death.shownCards[6]?.cost.div(2).floor())
                 player.death.shownCards = player.death.shownCards.filter((v, i) => i != 6)
             },
-            style: {"width": "100px", "height": "100px", "min-height": "100px"}
+            style: { "width": "100px", "height": "100px", "min-height": "100px" }
         },
 
         "7b": {
             display() { return `buy` },
-            canClick() { return player.death.shownCards[7]?.cost?.lte?.(player.death.genomes)},
+            canClick() { return player.death.shownCards[7]?.cost?.lte?.(player.death.genomes) },
             onClick() {
                 player.death.genomes = player.death.genomes.sub(player.death.shownCards[7]?.cost)
                 player.death.effects[player.death.shownCards[7]?.id] = player.death.effects[player.death.shownCards[7]?.id].add(1)
                 player.death.shownCards = player.death.shownCards.filter((v, i) => i != 7)
             },
-            style: {"width": "100px", "height": "100px", "min-height": "100px"}
+            style: { "width": "100px", "height": "100px", "min-height": "100px" }
         },
 
         "7s": {
             display() { return `sell` },
-            canClick() { return true},
+            canClick() { return true },
             onClick() {
                 player.death.genomes = player.death.genomes.add(player.death.shownCards[7]?.cost.div(2).floor())
                 player.death.shownCards = player.death.shownCards.filter((v, i) => i != 7)
             },
-            style: {"width": "100px", "height": "100px", "min-height": "100px"}
+            style: { "width": "100px", "height": "100px", "min-height": "100px" }
         },
 
         "8b": {
             display() { return `buy` },
-            canClick() { return player.death.shownCards[8]?.cost?.lte?.(player.death.genomes)},
+            canClick() { return player.death.shownCards[8]?.cost?.lte?.(player.death.genomes) },
             onClick() {
                 player.death.genomes = player.death.genomes.sub(player.death.shownCards[8]?.cost)
                 player.death.effects[player.death.shownCards[8]?.id] = player.death.effects[player.death.shownCards[8]?.id].add(1)
                 player.death.shownCards = player.death.shownCards.filter((v, i) => i != 8)
             },
-            style: {"width": "100px", "height": "100px", "min-height": "100px"}
+            style: { "width": "100px", "height": "100px", "min-height": "100px" }
         },
 
         "8s": {
             display() { return `sell` },
-            canClick() { return true},
+            canClick() { return true },
             onClick() {
                 player.death.genomes = player.death.genomes.add(player.death.shownCards[8]?.cost.div(2).floor())
                 player.death.shownCards = player.death.shownCards.filter((v, i) => i != 8)
             },
-            style: {"width": "100px", "height": "100px", "min-height": "100px"}
+            style: { "width": "100px", "height": "100px", "min-height": "100px" }
         },
 
     },
@@ -1150,7 +1286,7 @@ addLayer("death", {
                 layerDataReset("upgrades")
                 layerDataReset("storage")
                 layerDataReset("research")
-                player.main.expectedDeath = new Decimal(sInYear * 50).add(player.death.timesDied * 5).mul(new Decimal(0.85).pow(player.death.effects.shl)).mul(new Decimal(1.15).pow(player.death.effects.lnl)).max(50)
+                player.main.expectedDeath = new Decimal(sInYear * 50).add(player.death.timesDied * 5).mul(new Decimal(0.85).pow(player.death.effects.shl)).mul(new Decimal(1.15).pow(player.death.effects.lnl)).max(50 * sInYear)
                 player.death.genomes = player.death.genomes.add(5)
             }
             generateCards()
@@ -1162,9 +1298,10 @@ addLayer("death", {
         }
 
         if (typeof player.death.shownCards[0]?.cost == "string") {
-            for(const card in player.death.shownCards) {
+            for (const card in player.death.shownCards) {
                 player.death.shownCards[card].cost = new Decimal(player.death.shownCards[card].cost)
             }
         }
     }
 })
+
